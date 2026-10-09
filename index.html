@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Finas Riff</title>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.js", "three/addons/": "./vendor/three/jsm/" } }
+</script>
+<style>
+  :root {
+    --deep: #06283d; --sea: #0b6694; --foam: #dff6ff; --sand: #ffe9a8; --sun: #ffd166; --coral: #ff7b54;
+    --ink: #0b3558;
+    --round: "Arial Rounded MT Bold", "Segoe UI", "Trebuchet MS", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: var(--deep); font-family: var(--round); color: var(--foam); }
+  canvas#c { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+
+  /* ---------- Anzeige im Spiel ---------- */
+  #hud { position: fixed; inset: 0; pointer-events: none; opacity: 0; transition: opacity .8s; }
+  #hud.on { opacity: 1; }
+
+  #album { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); display: flex; gap: 10px;
+    padding: 10px 14px; border-radius: 999px; background: rgba(6, 40, 61, .55); backdrop-filter: blur(6px);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, .3), inset 0 0 0 2px rgba(223, 246, 255, .18); }
+  .slot { position: relative; width: clamp(48px, 6.2vw, 78px); aspect-ratio: 1; border-radius: 50%;
+    background: rgba(223, 246, 255, .12); box-shadow: inset 0 0 0 3px rgba(223, 246, 255, .22);
+    display: grid; place-items: center; }
+  .slot::before { content: "?"; font-size: clamp(22px, 3vw, 38px); color: rgba(223, 246, 255, .45); }
+  .slot img { position: absolute; inset: 8%; width: 84%; height: 84%; object-fit: contain; opacity: 0; transform: scale(.3); }
+  .slot b { position: absolute; right: -6px; bottom: -6px; width: 42%; aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+    background: var(--sun); color: var(--ink); font-size: clamp(14px, 1.9vw, 24px); box-shadow: 0 2px 6px rgba(0, 0, 0, .35); opacity: 0; }
+  .slot.found { background: radial-gradient(circle at 35% 30%, #fff, #bfe9ff); box-shadow: inset 0 0 0 3px var(--sun); }
+  .slot.found::before { content: ""; }
+  .slot.found img, .slot.found b { opacity: 1; transform: none; transition: transform .6s cubic-bezier(.2, 1.6, .4, 1), opacity .3s; }
+  .slot.new { animation: pop 1.5s cubic-bezier(.2, 1.4, .4, 1); z-index: 2; }
+  @keyframes pop { 0% { transform: scale(1); } 30% { transform: scale(2.1) translateY(-28%); } 100% { transform: scale(1); } }
+  #album.party .slot { animation: wave 1.2s ease-in-out infinite; }
+  #album.party .slot:nth-child(2n) { animation-delay: .15s; }
+  #album.party .slot:nth-child(3n) { animation-delay: .3s; }
+  @keyframes wave { 50% { transform: translateY(-12px); } }
+
+  #card { position: absolute; top: 22px; left: 50%; transform: translate(-50%, -160%); display: flex; align-items: center; gap: 22px;
+    padding: 12px 34px 12px 14px; border-radius: 999px; background: rgba(255, 255, 255, .94); color: var(--ink);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, .35); transition: transform .55s cubic-bezier(.2, 1.3, .4, 1); }
+  #card.on { transform: translate(-50%, 0); }
+  #card .letter { width: clamp(78px, 9vw, 120px); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+    background: var(--sun); font-size: clamp(54px, 6.6vw, 88px); line-height: 1; box-shadow: inset 0 -6px 0 rgba(0, 0, 0, .12); }
+  #card .word { font-size: clamp(40px, 5.2vw, 70px); letter-spacing: .08em; }
+  #card .word em { font-style: normal; color: var(--coral); }
+
+  #shrimp { position: absolute; top: 22px; left: 22px; display: flex; align-items: center; gap: 12px; padding: 10px 18px 10px 12px;
+    border-radius: 22px; background: rgba(6, 40, 61, .55); backdrop-filter: blur(6px); opacity: 0; transition: opacity .5s; }
+  #shrimp.on { opacity: 1; }
+  #shrimp.bump { animation: bump .5s; }
+  @keyframes bump { 40% { transform: scale(1.18); } }
+  #shrimp svg { width: 40px; height: 40px; }
+  #shrimp-dots { display: grid; grid-template-columns: repeat(5, 14px); gap: 5px; }
+  #shrimp-dots i { width: 14px; height: 14px; border-radius: 50%; background: rgba(223, 246, 255, .2); }
+  #shrimp-dots i.on { background: var(--coral); box-shadow: 0 0 8px var(--coral); }
+  #shrimp-count { font-size: 40px; min-width: 1.2em; text-align: center; }
+
+  #banner { position: absolute; top: 30%; left: 50%; transform: translate(-50%, -50%) scale(.2); opacity: 0;
+    font-size: clamp(60px, 11vw, 150px); color: var(--sun); text-shadow: 0 6px 0 var(--coral), 0 14px 40px rgba(0, 0, 0, .5);
+    transition: transform .8s cubic-bezier(.2, 1.5, .4, 1), opacity .4s; }
+  #banner.on { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+
+  #mute { position: fixed; top: 20px; right: 20px; width: 54px; height: 54px; border-radius: 50%; border: 0; cursor: pointer;
+    background: rgba(6, 40, 61, .55); color: var(--foam); font-size: 26px; display: none; }
+  #hud.on ~ #mute { display: block; }
+  #mute:focus-visible { outline: 3px solid var(--sun); }
+
+  /* ---------- Startbild und Pause ---------- */
+  .screen { position: fixed; inset: 0; display: grid; place-items: center; transition: opacity .9s; }
+  .screen.off { opacity: 0; pointer-events: none; }
+  #start { background: linear-gradient(90deg, rgba(6, 40, 61, .82) 0%, rgba(6, 40, 61, .35) 42%, rgba(6, 40, 61, 0) 60%), url(assets/img/titel.jpg) 62% center / cover; }
+  #start { place-items: center start; }
+  #start .box { margin-left: clamp(24px, 7vw, 120px); text-align: center; }
+  h1 { margin: 0 0 4vh; font-size: clamp(50px, 7.4vw, 112px); line-height: 1; color: #fff; letter-spacing: .02em;
+    text-shadow: 0 5px 0 var(--sea), 0 12px 40px rgba(0, 0, 0, .6); }
+  h1 span { color: var(--sun); }
+  .play { width: clamp(120px, 15vw, 190px); aspect-ratio: 1; border-radius: 50%; border: 0; cursor: pointer; font-family: inherit;
+    background: radial-gradient(circle at 35% 30%, #fff3c4, var(--sun) 60%, #f4a93b); color: var(--ink);
+    font-size: clamp(28px, 3.6vw, 46px); box-shadow: 0 10px 0 #c97a1e, 0 22px 40px rgba(0, 0, 0, .45); animation: pulse 1.6s ease-in-out infinite; }
+  .play:disabled { filter: grayscale(.8) brightness(.8); animation: none; cursor: progress; }
+  .play:active { transform: translateY(6px); box-shadow: 0 4px 0 #c97a1e; }
+  .play:focus-visible, .again:focus-visible { outline: 4px solid #fff; outline-offset: 4px; }
+  @keyframes pulse { 50% { transform: scale(1.07); } }
+  .again { display: none; margin: 2.4vh auto 0; padding: 10px 22px; border-radius: 999px; border: 2px solid rgba(255, 255, 255, .6);
+    background: rgba(6, 40, 61, .5); color: #fff; font: inherit; font-size: 20px; cursor: pointer; }
+  .keys { display: flex; justify-content: center; gap: 5vw; margin-top: 3vh; font-size: clamp(16px, 1.6vw, 22px); }
+  .keys > div { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .caps { display: flex; gap: 6px; }
+  kbd { display: grid; place-items: center; min-width: 46px; height: 46px; padding: 0 10px; border-radius: 10px; font: inherit; font-size: 24px;
+    background: #fff; color: var(--ink); box-shadow: 0 5px 0 #9fb6c7; }
+  kbd.space { min-width: 190px; }
+  #bar { width: min(320px, 60vw); height: 10px; margin: 2.4vh auto 0; border-radius: 99px; background: rgba(255, 255, 255, .2); overflow: hidden; }
+  #bar i { display: block; height: 100%; width: 0; background: var(--sun); transition: width .3s; }
+  .parents { margin-top: 2vh; font: 14px/1.4 "Segoe UI", system-ui, sans-serif; color: rgba(223, 246, 255, .75); }
+  #pause { background: rgba(6, 40, 61, .78); backdrop-filter: blur(6px); }
+  #pause h2 { font-size: clamp(40px, 6vw, 80px); margin: 0 0 3vh; text-align: center; }
+  #error { position: fixed; inset: auto 0 0 0; padding: 14px; background: #7a1f1f; color: #fff; font: 15px "Segoe UI", sans-serif; display: none; }
+  @media (prefers-reduced-motion: reduce) { .play, #album.party .slot { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="hud">
+  <div id="shrimp">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><path d="M44 20a17 17 0 1 0 4 22" fill="none" stroke="#ff7b54" stroke-width="10" stroke-linecap="round"/><circle cx="22" cy="28" r="3" fill="#06283d"/><path d="M19 24C11 14 7 20 6 24" fill="none" stroke="#ff7b54" stroke-width="2.5" stroke-linecap="round"/></svg>
+    <div id="shrimp-dots"></div>
+    <div id="shrimp-count">0</div>
+  </div>
+  <div id="card"></div>
+  <div id="banner">BRAVO!</div>
+  <div id="album"></div>
+</div>
+<button id="mute" title="Ton an/aus (M)" aria-label="Ton an oder aus">🔊</button>
+
+<div id="start" class="screen">
+  <div class="box">
+    <h1>Finas <span>Riff</span></h1>
+    <button class="play" id="play" disabled>LOS!</button>
+    <div id="bar"><i></i></div>
+    <button class="again" id="again">↺ Neu anfangen</button>
+    <div class="keys">
+      <div><div class="caps"><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd></div>schwimmen</div>
+      <div><div class="caps"><kbd class="space">Leertaste</kbd></div>nach oben</div>
+    </div>
+    <p class="parents">Für Eltern: Pfeiltasten oder W A S D · Leertaste = aufsteigen · M = Ton aus · Esc = Pause</p>
+  </div>
+</div>
+
+<div id="pause" class="screen off">
+  <div>
+    <h2>Pause</h2>
+    <button class="play" id="resume">▶</button>
+  </div>
+</div>
+<div id="error"></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
